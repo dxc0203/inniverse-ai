@@ -240,7 +240,7 @@ elif page == "历史记录":
                             st.image(img, caption=f"输入：{f_name}", use_container_width=True)
                         
                         out_candidates = [f"model_output_{f_name}", f_name]
-                        found_output = Falserefactor: restructure project modules and improve code reuse
+                        found_output = False
                         if os.path.exists(output_dir):
                             for cand in out_candidates:
                                 out_path = os.path.join(output_dir, cand)
