@@ -233,3 +233,5 @@ def render_history(LOGS_DIR):
             st.info("在日志目录中找不到任何项目。")
     else:
         st.info("未找到日志目录。")
+
+# End of pages_ui.py
