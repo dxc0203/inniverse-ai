@@ -7,7 +7,6 @@ from dotenv import load_dotenv
 import pyperclip
 import google.genai as genai
 from google.genai import types
-from google.api_core import exceptions
 import base64
 from PIL import Image
 
@@ -26,7 +25,7 @@ st.set_page_config(page_title="Inniverse AI Lab", layout="wide")
 if "uploaded_files" not in st.session_state:
     st.session_state["uploaded_files"] = []
 if "input_prompt" not in st.session_state:
-    st.session_state["input_prompt"] = "Describe this garment for a B2B platform. Focus on fabric and design."
+    st.session_state["input_prompt"] = "A beautiful landscape painting."
 if "selected_prompt_name" not in st.session_state:
     st.session_state["selected_prompt_name"] = ""
 
@@ -64,68 +63,8 @@ with st.sidebar:
 
         st.divider()
 
-        # --- Task Type Selection ---
-        task_type = st.selectbox(
-            "Select Task Type",
-            ["Analyze Image & Generate Text", "Generate Image from Text", "Generate Image from Image & Text"],
-            key="task_type_selector",
-        )
-        st.divider()
-
-        # 設定專案與 Prompt
-        project_name = st.text_input(
-            "Project Name",
-            value="MyProject_001",
-            key="input_project_name",
-        )
-
-        # --- 從 Prompt Management 載入 ---
-        if st.session_state.get("selected_prompt_name"):
-             if st.button(f"Load '{st.session_state.selected_prompt_name}'"):
-                prompt_path = os.path.join(PROMPTS_DIR, st.session_state.selected_prompt_name)
-                if os.path.exists(prompt_path):
-                    with open(prompt_path, "r", encoding="utf-8") as f:
-                        st.session_state["input_prompt"] = f.read()
-
-
-        user_prompt = st.text_area(
-            "Prompt",
-            key="input_prompt",
-            height=150
-        )
-
 
 # 3. 核心處理邏輯
-def generate_text_from_images(images, prompt, is_test):
-    if is_test:
-        # 模擬 AI 處理時間
-        time.sleep(1)
-        return "This is a test response from the AI."
-    else:
-        # 決定要使用哪個 API Key
-        api_key_to_use = st.session_state.get("api_key_input") or os.getenv("GEMINI_API_KEY")
-
-        if not api_key_to_use:
-            st.error("Gemini API key is not configured. Please enter it in the sidebar or set the GEMINI_API_KEY environment variable.")
-            return None # 或者可以返回一個錯誤訊息的字串
-
-        try:
-            # 真正連線到 Gemini 的邏輯
-            genai.configure(api_key=api_key_to_use)
-            model = genai.GenerativeModel('gemini-1.5-flash')
-            contents = [prompt] + images
-            response = model.generate_content(contents)
-            return response.text
-        except exceptions.PermissionDenied as e:
-            st.error(f"Permission denied. Please check your API key and permissions. Details: {e}")
-            return None
-        except exceptions.InvalidArgument as e:
-            st.error(f"Invalid argument provided to the API. Details: {e}")
-            return None
-        except Exception as e:
-            st.error(f"An unexpected error occurred while calling the Gemini API: {e}")
-            return None
-
 def generate_image_from_text(prompt, is_test):
     if is_test:
         time.sleep(1)
@@ -159,12 +98,6 @@ def generate_image_from_text(prompt, is_test):
                             # The image data is in part.image.data, which are bytes
                             image_data_list.append(part.image.data)
             return image_data_list
-        except exceptions.PermissionDenied as e:
-            st.error(f"Permission denied. Please check your API key and permissions. Details: {e}")
-            return None
-        except exceptions.InvalidArgument as e:
-            st.error(f"Invalid argument provided to the API. Details: {e}")
-            return None
         except Exception as e:
             st.error(f"An unexpected error occurred while generating the image: {e}")
             return None
@@ -202,12 +135,6 @@ def generate_image_from_image_and_text(image, prompt, is_test):
                             # The image data is in part.image.data, which are bytes
                             image_data_list.append(part.image.data)
             return image_data_list
-        except exceptions.PermissionDenied as e:
-            st.error(f"Permission denied. Please check your API key and permissions. Details: {e}")
-            return None
-        except exceptions.InvalidArgument as e:
-            st.error(f"Invalid argument provided to the API. Details: {e}")
-            return None
         except Exception as e:
             st.error(f"An unexpected error occurred while generating the image: {e}")
             return None
@@ -215,17 +142,27 @@ def generate_image_from_image_and_text(image, prompt, is_test):
 
 # 4. 主介面：上傳與執行
 if page == "New Project":
+    
+    project_name = st.text_input(
+        "Project Name",
+        value="MyProject_001",
+        key="input_project_name",
+    )
+
+    user_prompt = st.text_area(
+        "Prompt",
+        key="input_prompt",
+        height=150
+    )
+
+    task_type = st.selectbox(
+        "Select Task Type",
+        ["Generate Image from Text", "Generate Image from Image & Text"],
+        key="task_type_selector",
+    )
 
     # Conditionally show the file uploader
-    if task_type == "Analyze Image & Generate Text":
-        newly_uploaded_files = st.file_uploader(
-            "Upload Images (max 5)",
-            type=["jpg", "jpeg", "png"],
-            accept_multiple_files=True,
-        )
-        if newly_uploaded_files:
-            st.session_state["uploaded_files"].extend(newly_uploaded_files)
-    elif task_type == "Generate Image from Image & Text":
+    if task_type == "Generate Image from Image & Text":
         newly_uploaded_files = st.file_uploader(
             "Upload an image",
             type=["jpg", "jpeg", "png"],
@@ -235,7 +172,7 @@ if page == "New Project":
             st.session_state["uploaded_files"] = [newly_uploaded_files]
 
 
-    if (task_type == "Analyze Image & Generate Text" or task_type == "Generate Image from Image & Text") and st.session_state["uploaded_files"]:
+    if task_type == "Generate Image from Image & Text" and st.session_state["uploaded_files"]:
         if len(st.session_state["uploaded_files"]) > 5:
             st.error(
                 f"You have uploaded {len(st.session_state['uploaded_files'])} files. The maximum is 5."
@@ -274,34 +211,7 @@ if page == "New Project":
             f.write(user_prompt)
 
         with st.spinner("Processing..."):
-            if task_type == "Analyze Image & Generate Text":
-                if 'processed_imgs' in locals() and processed_imgs:
-                    # 先儲存所有圖片
-                    for i, img in enumerate(processed_imgs):
-                        img.save(os.path.join(log_dir, "inputs", f"image_{i+1}.png"))
-
-                    result = generate_text_from_images(
-                        processed_imgs, user_prompt, test_mode
-                    )
-                    if result:
-                        st.subheader("Result")
-                        st.write(result)
-                        if st.button("Copy to Clipboard"):
-                            pyperclip.copy(result)
-                            st.success("Copied to clipboard!")
-
-                        # 儲存輸出結果
-                        with open(
-                            os.path.join(log_dir, "outputs", "result.txt"),
-                            "w",
-                            encoding="utf-8",
-                        ) as f:
-                            f.write(result)
-                        st.success("Processing complete!")
-                else:
-                    st.warning("Please upload at least one image for this task.")
-
-            elif task_type == "Generate Image from Text":
+            if task_type == "Generate Image from Text":
                 image_results = generate_image_from_text(user_prompt, test_mode)
                 if image_results:
                     st.subheader("Generated Images")
