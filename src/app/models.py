@@ -3,7 +3,7 @@ import time
 import streamlit as st
 import google.genai as genai
 from PIL import Image
-from .constants import ROOT_DIR
+from constants import ROOT_DIR
 
 def generate_image_from_text(prompt, is_test):
     if is_test:
