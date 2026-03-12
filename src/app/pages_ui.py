@@ -5,18 +5,20 @@ import time
 import json
 from PIL import Image
 from models import generate_image_from_text, generate_image_from_image_and_text
+from constants import ROOT_DIR
 
 def render_new_project(LOGS_DIR, PROMPTS_DIR, test_mode):
     st.header("新建项目")
-
+    
     if not os.path.exists(PROMPTS_DIR):
         os.makedirs(PROMPTS_DIR, exist_ok=True)
+    
     prompt_files = sorted([f for f in os.listdir(PROMPTS_DIR) if f.endswith(".txt")])
     prompt_options = ["从空白开始 (Blank)"] + prompt_files
-
+    
     bulk_count = st.number_input("想一次建立几个新專案？", min_value=1, max_value=5, value=1, step=1)
     projects_data = []
-
+    
     for i in range(bulk_count):
         with st.expander(f"项目 {i+1} 配置", expanded=(i==0)):
             p_name = st.text_input(f"项目名称 / Product ID", value=f"PROJ_{int(time.time())}_{i+1}", key=f"bulk_name_{i}")
@@ -43,7 +45,7 @@ def render_new_project(LOGS_DIR, PROMPTS_DIR, test_mode):
             up_files = None
             if t_type == "从图像和文本生成图像":
                 up_files = st.file_uploader(f"上传商品图片 (项目 {i+1})", type=["jpg", "jpeg", "png"], accept_multiple_files=True, key=f"bulk_up_{i}")
-
+            
             projects_data.append({"name": p_name, "eth": eth, "age": age, "bg": bg, "use_def": use_def, "prompt": u_prompt, "task_type": t_type, "files": up_files})
 
     def assemble_prompt(base_text, use_default, ethnicity, age, bg):
@@ -62,7 +64,7 @@ def render_new_project(LOGS_DIR, PROMPTS_DIR, test_mode):
             os.makedirs(os.path.join(log_dir, "inputs"), exist_ok=True)
             os.makedirs(os.path.join(log_dir, "outputs"), exist_ok=True)
             with open(os.path.join(log_dir, "prompt.txt"), "w", encoding="utf-8") as f: f.write(final_p)
-            metadata = {"id": data['name'], "timestamp": time.time(), "ethnicity": data['eth'], "age": data['age'], "background": data['bg'], "task_type": data['task_type'], "use_default": data['use_def'], "base_prompt": data['prompt']}
+            metadata = {"id": data['name'], "timestamp": time.time(), "ethnicity": data['eth'], "age": data['age'], "background": data['bg'], "task_type": data['task_type'], "use_default": data['use_def'], "base_prompt": data['prompt'], "test_mode": test_mode}
             with open(os.path.join(log_dir, "metadata.json"), "w", encoding="utf-8") as f: json.dump(metadata, f, ensure_ascii=False, indent=4)
             processed_imgs = []
             if data['task_type'] == "从图像和文本生成图像":
@@ -81,7 +83,7 @@ def render_new_project(LOGS_DIR, PROMPTS_DIR, test_mode):
                     img_path = img_data if test_mode else os.path.join(log_dir, "outputs", f"generated_image_{i+1}.png")
                     if not test_mode:
                         with open(img_path, "wb") as f: f.write(img_data)
-                st.success(f"项目 {data['name']} 生成完成！")
+            st.success(f"项目 {data['name']} 生成完成！")
         st.balloons()
         st.session_state["navigate_to"] = "历史记录"
         st.rerun()
@@ -116,7 +118,9 @@ def render_history(LOGS_DIR):
     log_root = LOGS_DIR
     if not os.path.exists(log_root): return
     projects = [d for d in os.listdir(log_root) if os.path.isdir(os.path.join(log_root, d))]
-    if not projects: return
+    if not projects:
+        st.info("暂无生成历史。")
+        return
     tracker_data = []
     for p in projects:
         p_path = os.path.join(log_root, p)
@@ -132,21 +136,23 @@ def render_history(LOGS_DIR):
         if os.path.exists(out_dir):
             out_files = [f for f in os.listdir(out_dir) if f.lower().endswith((".png", ".jpg", ".jpeg"))]
             if out_files: preview = os.path.join(out_dir, sorted(out_files)[0])
+        if not preview and metadata.get("test_mode"):
+            placeholder_path = os.path.join(ROOT_DIR, "placeholder.png")
+            if os.path.exists(placeholder_path): preview = placeholder_path
         tracker_data.append({"id": p, "prompt": prompt, "mtime": mtime, "preview": preview, "metadata": metadata})
     tracker_data.sort(key=lambda x: x["mtime"], reverse=True)
-
     with st.container():
-        f_col1, f_col2, f_col3, f_col4 = st.columns([2, 1, 1, 1])
+        f_col1, f_col2, f_col3, f_col4, f_col5 = st.columns([2, 1, 1, 1, 0.5])
         with f_col1: search_query = st.text_input("🔍 搜索 (Product ID / Prompt)", "").lower()
-        
         ethnicities = sorted(list(set([d["metadata"].get("ethnicity", "N/A") for d in tracker_data if d.get("metadata")])))
         ages = sorted(list(set([d["metadata"].get("age", "N/A") for d in tracker_data if d.get("metadata")])))
         backgrounds = sorted(list(set([d["metadata"].get("background", "N/A") for d in tracker_data if d.get("metadata")])))
-
         with f_col2: f_eth = st.selectbox("族裔", ["全部"] + ethnicities)
         with f_col3: f_age = st.selectbox("年龄", ["全部"] + ages)
         with f_col4: f_bg = st.selectbox("背景", ["全部"] + backgrounds)
-
+        with f_col5:
+            st.write("")
+            if st.button("🔄", help="重置筛选"): st.rerun()
     filtered_data = []
     for d in tracker_data:
         m = d.get("metadata", {})
@@ -155,11 +161,13 @@ def render_history(LOGS_DIR):
         match_age = (f_age == "全部") or (m.get("age") == f_age)
         match_bg = (f_bg == "全部") or (m.get("background") == f_bg)
         if match_search and match_eth and match_age and match_bg: filtered_data.append(d)
-
     st.markdown("---")
+    if not filtered_data:
+        st.warning("没有找到匹配的项目。")
+        return
     h_col1, h_col2, h_col3 = st.columns([1, 4, 1])
     h_col1.markdown("**预览**")
-    h_col2.markdown("**详情 (Notion Style)**")
+    h_col2.markdown("**项目详情 (Card View)**")
     h_col3.markdown("**操作**")
     for item in filtered_data:
         with st.container():
@@ -176,43 +184,40 @@ def render_history(LOGS_DIR):
                     if m.get("age"): tags.append(f"🎂 {m['age']}")
                     if m.get("background"): tags.append(f"🖼️ {m['background']}")
                     if m.get("task_type"): tags.append(f"⚙️ {m['task_type']}")
+                    if m.get("test_mode"): tags.append(f"🧪 Test Mode")
                     st.markdown(" ".join([f"`{t}`" for t in tags]))
                 st.caption(item["prompt"][:200] + "..." if len(item["prompt"]) > 200 else item["prompt"])
                 st.caption(f"📅 {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(item['mtime']))}")
             with c3:
-                if st.button("详情", key=f"view_{item['id']}"):
-                    st.session_state["history_selected_project"] = item["id"]
-                    st.rerun()
+                with st.expander("查看详情"):
+                    st.write(f"**完整提示词:**")
+                    st.code(item["prompt"])
+                    sub_col1, sub_col2 = st.columns(2)
+                    with sub_col1:
+                        if st.button("重新启动", key=f"restart_{item['id']}", use_container_width=True):
+                            st.session_state["input_prompt"] = item["prompt"]
+                            st.session_state["input_project_name"] = item["id"]
+                            st.session_state["navigate_to"] = "新项目"
+                            st.rerun()
+                    with sub_col2:
+                        if st.button("删除项目", key=f"del_{item['id']}", type="primary", use_container_width=True):
+                            shutil.rmtree(os.path.join(log_root, item["id"]))
+                            st.rerun()
+                    p_path = os.path.join(log_root, item["id"])
+                    input_dir = os.path.join(p_path, "inputs"); output_dir = os.path.join(p_path, "outputs")
+                    if os.path.exists(input_dir):
+                        in_files = sorted([f for f in os.listdir(input_dir) if f.lower().endswith((".png", ".jpg", ".jpeg"))])
+                        if in_files:
+                            st.markdown("**输入图片:**")
+                            in_cols = st.columns(3)
+                            for idx, f_name in enumerate(in_files): in_cols[idx % 3].image(os.path.join(input_dir, f_name), use_container_width=True)
+                    if os.path.exists(output_dir):
+                        out_files = sorted([f for f in os.listdir(output_dir) if f.lower().endswith((".png", ".jpg", ".jpeg"))])
+                        if out_files:
+                            st.markdown("**生成结果:**")
+                            out_cols = st.columns(2)
+                            for idx, of in enumerate(out_files):
+                                out_cols[idx % 2].image(os.path.join(output_dir, of), use_container_width=True)
+                                with open(os.path.join(output_dir, of), "rb") as f:
+                                    st.download_button("下载", f, file_name=of, key=f"dl_{item['id']}_{idx}", use_container_width=True)
         st.markdown("---")
-    sel = st.session_state.get("history_selected_project")
-    if sel and sel in [p["id"] for p in tracker_data]:
-        st.subheader(f"📑 詳情: {sel}")
-        p_path = os.path.join(log_root, sel)
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("重新启动", use_container_width=True):
-                with open(os.path.join(p_path, "prompt.txt"), "r", encoding="utf-8") as f: st.session_state["input_prompt"] = f.read()
-                st.session_state["input_project_name"] = sel
-                st.session_state["navigate_to"] = "新项目"
-                st.rerun()
-        with col2:
-            if st.button("删除", type="primary", use_container_width=True):
-                shutil.rmtree(p_path); del st.session_state["history_selected_project"]; st.rerun()
-        with open(os.path.join(p_path, "prompt.txt"), "r", encoding="utf-8") as f: st.text_area("完整提示词", f.read(), height=150, disabled=True)
-        input_dir = os.path.join(p_path, "inputs"); output_dir = os.path.join(p_path, "outputs")
-        if os.path.exists(input_dir):
-            in_files = sorted([f for f in os.listdir(input_dir) if f.lower().endswith((".png", ".jpg", ".jpeg"))])
-            for f_name in in_files:
-                ic1, ic2 = st.columns(2)
-                with ic1: st.image(os.path.join(input_dir, f_name), caption="Input", use_container_width=True)
-                out_name = f"generated_image_{f_name.split('_')[-1]}" if "input_image_" in f_name else f_name
-                out_path = os.path.join(output_dir, out_name)
-                with ic2:
-                    if os.path.exists(out_path): st.image(out_path, caption="Output", use_container_width=True)
-        if os.path.exists(output_dir):
-            out_files = sorted([f for f in os.listdir(output_dir) if f.lower().endswith((".png", ".jpg", ".jpeg"))])
-            res_cols = st.columns(3)
-            for i, of in enumerate(out_files):
-                with res_cols[i % 3]:
-                    st.image(os.path.join(output_dir, of), caption=of, use_container_width=True)
-                    with open(os.path.join(output_dir, of), "rb") as f: st.download_button("下载", f, file_name=of, key=f"dl_{sel}_{i}")
