@@ -134,8 +134,28 @@ def render_history(LOGS_DIR):
             if out_files: preview = os.path.join(out_dir, sorted(out_files)[0])
         tracker_data.append({"id": p, "prompt": prompt, "mtime": mtime, "preview": preview, "metadata": metadata})
     tracker_data.sort(key=lambda x: x["mtime"], reverse=True)
-    search_query = st.text_input("🔍 搜索项目 (Product ID / Prompt)", "").lower()
-    filtered_data = [d for d in tracker_data if search_query in d["id"].lower() or search_query in d["prompt"].lower()]
+
+    with st.container():
+        f_col1, f_col2, f_col3, f_col4 = st.columns([2, 1, 1, 1])
+        with f_col1: search_query = st.text_input("🔍 搜索 (Product ID / Prompt)", "").lower()
+        
+        ethnicities = sorted(list(set([d["metadata"].get("ethnicity", "N/A") for d in tracker_data if d.get("metadata")])))
+        ages = sorted(list(set([d["metadata"].get("age", "N/A") for d in tracker_data if d.get("metadata")])))
+        backgrounds = sorted(list(set([d["metadata"].get("background", "N/A") for d in tracker_data if d.get("metadata")])))
+
+        with f_col2: f_eth = st.selectbox("族裔", ["全部"] + ethnicities)
+        with f_col3: f_age = st.selectbox("年龄", ["全部"] + ages)
+        with f_col4: f_bg = st.selectbox("背景", ["全部"] + backgrounds)
+
+    filtered_data = []
+    for d in tracker_data:
+        m = d.get("metadata", {})
+        match_search = search_query in d["id"].lower() or search_query in d["prompt"].lower()
+        match_eth = (f_eth == "全部") or (m.get("ethnicity") == f_eth)
+        match_age = (f_age == "全部") or (m.get("age") == f_age)
+        match_bg = (f_bg == "全部") or (m.get("background") == f_bg)
+        if match_search and match_eth and match_age and match_bg: filtered_data.append(d)
+
     st.markdown("---")
     h_col1, h_col2, h_col3 = st.columns([1, 4, 1])
     h_col1.markdown("**预览**")
