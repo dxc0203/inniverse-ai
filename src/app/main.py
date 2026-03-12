@@ -40,13 +40,13 @@ with st.sidebar:
     st.header("开发者工具")
     
     api_key = st.text_input(
-        "Gemini API 密钥",
+        "Gemini API 密鑰",
         type="password",
         key="api_key_input",
-        help="请输入您的 API 密钥。如果未提供，应用程序将嘗試使用環境變量。"
+        help="请输入您的 API 密鑰。如果未提供，应用程序将尝试使用环境变量。"
     )
     
-    test_mode = st.checkbox("测试模式", value=True)
+    test_mode = st.checkbox("测试模式", value=False)
     if test_mode:
         st.warning("测试模式已开启。不会进行 API 调用。")
     st.divider()
