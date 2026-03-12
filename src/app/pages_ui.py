@@ -185,7 +185,7 @@ def render_prompt_management(PROMPTS_DIR):
     tag_eth, tag_age, tag_bg = render_tag_selectors("pm", saved_tags)
 
     st.markdown("### 📝 提示词内容")
-    new_prompt_name = st.text_input("提示名称", value=selected_prompt if selected_prompt != "创建新提示" else "")
+    new_prompt_name = st.text_input("提示名称", value=os.path.splitext(selected_prompt)[0] if selected_prompt != "创建新提示" else "")
     prompt_text = st.text_area("提示内容", value=prompt_content, height=300)
 
     col1, col2 = st.columns(2)
