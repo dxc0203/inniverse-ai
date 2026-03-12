@@ -45,6 +45,12 @@ def render_new_project(LOGS_DIR, PROMPTS_DIR, test_mode):
             up_files = None
             if t_type == "从图像和文本生成图像":
                 up_files = st.file_uploader(f"上传商品图片 (项目 {i+1})", type=["jpg", "jpeg", "png"], accept_multiple_files=True, key=f"bulk_up_{i}")
+                if up_files:
+                    st.markdown("**图片预览 (Limit: 300px width):**")
+                    preview_cols = st.columns(5)
+                    for idx, up_file in enumerate(up_files[:5]):
+                        with preview_cols[idx]:
+                            st.image(up_file, width=150)
             
             projects_data.append({"name": p_name, "eth": eth, "age": age, "bg": bg, "use_def": use_def, "prompt": u_prompt, "task_type": t_type, "files": up_files})
 
@@ -67,11 +73,12 @@ def render_new_project(LOGS_DIR, PROMPTS_DIR, test_mode):
             metadata = {"id": data['name'], "timestamp": time.time(), "ethnicity": data['eth'], "age": data['age'], "background": data['bg'], "task_type": data['task_type'], "use_default": data['use_def'], "base_prompt": data['prompt'], "test_mode": test_mode}
             with open(os.path.join(log_dir, "metadata.json"), "w", encoding="utf-8") as f: json.dump(metadata, f, ensure_ascii=False, indent=4)
             processed_imgs = []
-            if data['task_type'] == "从图像和文本生成图像":
+            if data['task_type'] == "从图像 and 文本生成图像":
                 if data['files']:
                     for f_idx, up_file in enumerate(data['files'][:5]):
                         img = Image.open(up_file)
-                        img.thumbnail((1024, 1024))
+                        # Limit AI sending size to 512x512
+                        img.thumbnail((512, 512))
                         img.save(os.path.join(log_dir, "inputs", f"input_image_{f_idx+1}.png"))
                         processed_imgs.append(img)
                 else: continue
