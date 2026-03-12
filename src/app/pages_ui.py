@@ -6,105 +6,100 @@ from models import generate_image_from_text, generate_image_from_image_and_text
 from ui_components import prompt_builder_ui
 
 def render_new_project(LOGS_DIR, test_mode):
-    project_name = st.text_input("项目名称", value="我的项目_001", key="input_project_name")
+    st.header("新建项目")
     
-    # --- ✨ 新功能: 模特与场景预设 ---
-    with st.expander("✨ 模特与场景快捷预设", expanded=True):
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            model_ethnicity = st.selectbox("模特族裔", ["西方人 (Western)", "亚洲人 (Asian)", "非洲人 (African)", "拉丁裔 (Hispanic)"], index=0)
-        with col2:
-            model_age = st.selectbox("模特年龄", ["20多岁 (20s)", "30多岁 (30s)", "40多岁 (40s)"], index=0)
-        with col3:
-            scene_bg = st.selectbox("背景场景", ["灰色影棚 (Grey Studio)", "户外街道 (Street)", "公园 (Park)", "室内客厅 (Living Room)"], index=0)
-        
-        use_default_prompt = st.checkbox("使用智能系统提示词 (推荐)", value=True, help="开启后将自动结合以上预设和默认服饰展示逻辑。")
+    # --- 批量生成功能 ---
+    bulk_count = st.number_input("想一次建立几个新專案？", min_value=1, max_value=5, value=1, step=1)
+    
+    # 使用 list 存储每个项目的数据
+    projects_data = []
+    
+    for i in range(bulk_count):
+        with st.expander(f"项目 {i+1} 配置", expanded=(i==0)):
+            p_name = st.text_input(f"项目名称", value=f"我的项目_{i+1:03d}", key=f"bulk_name_{i}")
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                eth = st.selectbox("模特族裔", ["西方人 (Western)", "亞洲人 (Asian)", "非洲人 (African)", "拉丁裔 (Hispanic)"], index=0, key=f"bulk_eth_{i}")
+            with col2:
+                age = st.selectbox("模特年龄", ["20多岁 (20s)", "30多岁 (30s)", "40多岁 (40s)"], index=0, key=f"bulk_age_{i}")
+            with col3:
+                bg = st.selectbox("背景场景", ["灰色影棚 (Grey Studio)", "户外街道 (Street)", "公园 (Park)", "室内客厅 (Living Room)"], index=0, key=f"bulk_bg_{i}")
+            
+            use_def = st.checkbox("使用智能系统提示词 (推荐)", value=True, key=f"bulk_use_def_{i}")
+            
+            # 提示词构建器 (对每个项目独立)
+            # 注意：prompt_builder_ui 可能需要 key 来区分，如果它内部支持的话。
+            # 这里我们假设它能返回当前项目的提示词。
+            
+            u_prompt = st.text_area("详细提示词描述 (可选)", value="", key=f"bulk_prompt_{i}", height=100)
+            
+            t_type = st.selectbox("选择任务类型", ["从文本生成图像", "从图像和文本生成图像"], key=f"bulk_task_{i}", index=1)
+            
+            up_files = None
+            if t_type == "从图像和文本生成图像":
+                up_files = st.file_uploader(f"上传商品图片 (项目 {i+1})", type=["jpg", "jpeg", "png"], accept_multiple_files=True, key=f"bulk_up_{i}")
+            
+            projects_data.append({
+                "name": p_name,
+                "eth": eth,
+                "age": age,
+                "bg": bg,
+                "use_def": use_def,
+                "prompt": u_prompt,
+                "task_type": t_type,
+                "files": up_files
+            })
 
-    # --- 提示词构建器 ---
-    new_prompt = prompt_builder_ui("new_project")
-    if new_prompt:
-        st.session_state["input_prompt"] = new_prompt
-        st.success("已从构建器生成提示词。")
-    
-    # 手动输入区域
-    user_prompt_base = st.text_area("详细提示词描述 (可选)", value=st.session_state.get("input_prompt", ""), key="input_prompt_area", height=100, help="如果您有特定要求，可以在此输入。")
-    
-    # 提示词组装逻辑
     def assemble_prompt(base_text, use_default, ethnicity, age, bg):
         if not use_default and base_text.strip():
             return base_text
-        
-        eth_map = {"西方人 (Western)": "western girl", "亚洲人 (Asian)": "asian girl", "非洲人 (African)": "african girl", "拉丁裔 (Hispanic)": "hispanic girl"}
+        eth_map = {"西方人 (Western)": "western girl", "亞洲人 (Asian)": "asian girl", "非洲人 (African)": "african girl", "拉丁裔 (Hispanic)": "hispanic girl"}
         age_map = {"20多岁 (20s)": "in her mid 20s", "30多岁 (30s)": "in her 30s", "40多岁 (40s)": "in her 40s"}
         bg_map = {"灰色影棚 (Grey Studio)": "in a grey studio background", "户外街道 (Street)": "in a sunny street background", "公园 (Park)": "in a green park background", "室内客厅 (Living Room)": "in a modern living room background"}
-        
         system_base = f"A {eth_map[ethnicity]} {age_map[age]} wearing the garment, taking the photo {bg_map[bg]}."
-        
         if base_text.strip():
             return f"{system_base} {base_text}"
         return system_base
 
-    task_type = st.selectbox("选择任务类型", ["从文本生成图像", "从图像和文本生成图像"], key="task_type_selector", index=1)
-    
-    if task_type == "从图像和文本生成图像":
-        st.info("💡 提示：您可以上传最多 5 张不同角度的商品图（平铺或挂拍），AI 将参考这些图片生成模特上身效果。")
-        newly_uploaded_files = st.file_uploader("上传商品图片 (可多选)", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
-        if newly_uploaded_files:
-            st.session_state["uploaded_files"] = newly_uploaded_files
-    
-    # 图像预览与管理
-    if task_type == "从图像和文本生成图像" and st.session_state["uploaded_files"]:
-        if len(st.session_state["uploaded_files"]) > 5:
-            st.error(f"您上传了 {len(st.session_state['uploaded_files'])} 个文件。最多支持 5 个。")
-        else:
+    if st.button("批量运行 AI", type="primary", use_container_width=True):
+        for idx, data in enumerate(projects_data):
+            st.write(f"### 正在处理项目 {idx+1}: {data['name']}...")
+            
+            final_p = assemble_prompt(data['prompt'], data['use_def'], data['eth'], data['age'], data['bg'])
+            log_dir = os.path.join(LOGS_DIR, data['name'])
+            os.makedirs(os.path.join(log_dir, "inputs"), exist_ok=True)
+            os.makedirs(os.path.join(log_dir, "outputs"), exist_ok=True)
+            
+            with open(os.path.join(log_dir, "prompt.txt"), "w", encoding="utf-8") as f:
+                f.write(final_p)
+            
             processed_imgs = []
-            cols = st.columns(min(len(st.session_state["uploaded_files"]), 5))
-            for idx, up_file in enumerate(st.session_state["uploaded_files"]):
-                img = Image.open(up_file)
-                img.thumbnail((1024, 1024))
-                processed_imgs.append(img)
-                with cols[idx]:
-                    st.image(img, caption=f"角度 {idx + 1}", use_container_width=True)
-                    if st.button("删除", key=f"delete_{idx}"):
-                        st.session_state["uploaded_files"].pop(idx)
-                        st.rerun()
-    
-    if st.button("运行 AI", type="primary", use_container_width=True):
-        final_prompt = assemble_prompt(user_prompt_base, use_default_prompt, model_ethnicity, model_age, scene_bg)
-        
-        log_dir = os.path.join(LOGS_DIR, project_name)
-        os.makedirs(os.path.join(log_dir, "inputs"), exist_ok=True)
-        os.makedirs(os.path.join(log_dir, "outputs"), exist_ok=True)
-        
-        with open(os.path.join(log_dir, "prompt.txt"), "w", encoding="utf-8") as f:
-            f.write(final_prompt)
-        
-        with st.spinner("AI 正在构思模特试穿效果..."):
-            if task_type == "从文本生成图像":
-                image_results = generate_image_from_text(final_prompt, test_mode)
-            else:
-                if 'processed_imgs' in locals() and processed_imgs:
-                                        # Save all input images and pass them all to the model
-                    for save_idx, save_img in enumerate(processed_imgs):
-                        save_img.save(os.path.join(log_dir, "inputs", f"input_image_{save_idx+1}.png"))
-                    image_results = generate_image_from_image_and_text(processed_imgs, final_prompt, test_mode)
-                    st.warning("请上传至少一张商品图片。")
-                    return
+            if data['task_type'] == "从图像和文本生成图像":
+                if data['files']:
+                    for f_idx, up_file in enumerate(data['files'][:5]):
+                        img = Image.open(up_file)
+                        img.thumbnail((1024, 1024))
+                        img.save(os.path.join(log_dir, "inputs", f"input_image_{f_idx+1}.png"))
+                        processed_imgs.append(img)
+                else:
+                    st.warning(f"项目 {data['name']} 未上传图片，跳过。")
+                    continue
 
+            with st.spinner(f"AI 正在为 {data['name']} 生成结果..."):
+                if data['task_type'] == "从文本生成图像":
+                    image_results = generate_image_from_text(final_p, test_mode)
+                else:
+                    image_results = generate_image_from_image_and_text(processed_imgs, final_p, test_mode)
+            
             if image_results:
-                st.subheader("✨ 生成结果")
-                res_cols = st.columns(len(image_results))
                 for i, img_data in enumerate(image_results):
                     img_path = img_data if test_mode else os.path.join(log_dir, "outputs", f"generated_image_{i+1}.png")
                     if not test_mode:
                         with open(img_path, "wb") as f:
                             f.write(img_data)
-                    with res_cols[i]:
-                        st.image(img_path, caption=f"效果图 {i+1}", use_container_width=True)
-                        if not test_mode:
-                             with open(img_path, "rb") as file:
-                                 st.download_button(label=f"下载效果图 {i+1}", data=file, file_name=f"result_{i+1}.png", mime="image/png", key=f"dl_{i}")
-                st.success("图像生成完成！已保存到历史记录。")
+                st.success(f"项目 {data['name']} 生成完成！")
+        st.balloons()
 
 def render_prompt_management(PROMPTS_DIR):
     st.header("提示词管理")
@@ -233,5 +228,3 @@ def render_history(LOGS_DIR):
             st.info("在日志目录中找不到任何项目。")
     else:
         st.info("未找到日志目录。")
-
-# End of pages_ui.py
