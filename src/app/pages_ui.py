@@ -41,18 +41,31 @@ def render_new_project(LOGS_DIR, PROMPTS_DIR, test_mode):
                 except: pass
             
             u_prompt = st.text_area("详细提示词描述", value=template_content, key=f"bulk_prompt_{i}", height=100)
+            
+            # Save prompt logic: only show if "Blank" is selected
+            save_prompt = False
+            save_name = ""
+            if selected_template == "从空白开始 (Blank)":
+                save_prompt = st.checkbox("记录此新提示词 (Save as template)", value=False, key=f"bulk_save_check_{i}")
+                if save_prompt:
+                    save_name = st.text_input("提示词模板名称", value=f"Template_{int(time.time())}", key=f"bulk_save_name_{i}")
+            
             t_type = st.selectbox("选择任务类型", ["从文本生成图像", "从图像和文本生成图像"], key=f"bulk_task_{i}", index=1)
             up_files = None
             if t_type == "从图像和文本生成图像":
                 up_files = st.file_uploader(f"上传商品图片 (项目 {i+1})", type=["jpg", "jpeg", "png"], accept_multiple_files=True, key=f"bulk_up_{i}")
                 if up_files:
-                    st.markdown("**图片预览 (Limit: 300px width):**")
+                    st.markdown("**图片预览 (Limit: 150px width):**")
                     preview_cols = st.columns(5)
                     for idx, up_file in enumerate(up_files[:5]):
                         with preview_cols[idx]:
                             st.image(up_file, width=150)
             
-            projects_data.append({"name": p_name, "eth": eth, "age": age, "bg": bg, "use_def": use_def, "prompt": u_prompt, "task_type": t_type, "files": up_files})
+            projects_data.append({
+                "name": p_name, "eth": eth, "age": age, "bg": bg, 
+                "use_def": use_def, "prompt": u_prompt, "task_type": t_type, 
+                "files": up_files, "save_prompt": save_prompt, "save_name": save_name
+            })
 
     def assemble_prompt(base_text, use_default, ethnicity, age, bg):
         if not use_default and base_text.strip(): return base_text
@@ -65,6 +78,14 @@ def render_new_project(LOGS_DIR, PROMPTS_DIR, test_mode):
     if st.button("批量运行 AI", type="primary", use_container_width=True):
         for idx, data in enumerate(projects_data):
             st.write(f"### 正在处理项目 {idx+1}: {data['name']}...")
+            
+            # Save new template if requested
+            if data['save_prompt'] and data['save_name'] and data['prompt']:
+                s_name = data['save_name'] if data['save_name'].endswith(".txt") else data['save_name'] + ".txt"
+                with open(os.path.join(PROMPTS_DIR, s_name), "w", encoding="utf-8") as f:
+                    f.write(data['prompt'])
+                st.info(f"已保存新提示词模板: {s_name}")
+
             final_p = assemble_prompt(data['prompt'], data['use_def'], data['eth'], data['age'], data['bg'])
             log_dir = os.path.join(LOGS_DIR, data['name'])
             os.makedirs(os.path.join(log_dir, "inputs"), exist_ok=True)
@@ -73,11 +94,10 @@ def render_new_project(LOGS_DIR, PROMPTS_DIR, test_mode):
             metadata = {"id": data['name'], "timestamp": time.time(), "ethnicity": data['eth'], "age": data['age'], "background": data['bg'], "task_type": data['task_type'], "use_default": data['use_def'], "base_prompt": data['prompt'], "test_mode": test_mode}
             with open(os.path.join(log_dir, "metadata.json"), "w", encoding="utf-8") as f: json.dump(metadata, f, ensure_ascii=False, indent=4)
             processed_imgs = []
-            if data['task_type'] == "从图像 and 文本生成图像":
+            if data['task_type'] == "从图像和文本生成图像":
                 if data['files']:
                     for f_idx, up_file in enumerate(data['files'][:5]):
                         img = Image.open(up_file)
-                        # Limit AI sending size to 512x512
                         img.thumbnail((512, 512))
                         img.save(os.path.join(log_dir, "inputs", f"input_image_{f_idx+1}.png"))
                         processed_imgs.append(img)
