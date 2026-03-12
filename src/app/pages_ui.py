@@ -3,19 +3,20 @@ import os
 import shutil
 import time
 import json
+import uuid
 from PIL import Image
 from models import generate_image_from_text, generate_image_from_image_and_text
 from constants import ROOT_DIR
 
 ETHNICITIES = ["西方人 (Western)", "亚洲人 (Asian)", "非洲人 (African)", "拉丁裔 (Hispanic)"]
 AGES = ["20多岁 (20s)", "30多岁 (30s)", "40多岁 (40s)"]
-BACKGROUNDS = ["灰色影棚 (Grey Studio)", "户外街道 (Street)", "公园 (Park)", "室内客厅 (Living Room)"]
+BACKGROUNDS = ["灰色影棚 (Grey Studio)", "户外街道 (Street)", "公園 (Park)", "室内客厅 (Living Room)"]
 
 def render_tag_selectors(prefix, saved_tags=None):
     """Shared UI component for ethnicity, age, and background selection."""
     if saved_tags is None:
         saved_tags = {}
-        
+    
     col1, col2, col3 = st.columns(3)
     with col1:
         eth_idx = ETHNICITIES.index(saved_tags.get("ethnicity", ETHNICITIES[0])) if saved_tags.get("ethnicity") in ETHNICITIES else 0
@@ -32,38 +33,39 @@ def render_new_project(LOGS_DIR, PROMPTS_DIR, test_mode):
     st.header("新建项目")
     if not os.path.exists(PROMPTS_DIR):
         os.makedirs(PROMPTS_DIR, exist_ok=True)
-
+    
     prompt_files = sorted([f for f in os.listdir(PROMPTS_DIR) if f.endswith(".txt")])
-    prompt_options = ["从空白开始 (Blank)"] + prompt_files
-
-    bulk_count = st.number_input("想一次建立几个新専案？", min_value=1, max_value=5, value=1, step=1)
+    prompt_options_display = ["从空白开始 (Blank)"] + [os.path.splitext(f)[0] for f in prompt_files]
+    
+    bulk_count = st.number_input("想一次建立几个新專案？", min_value=1, max_value=5, value=1, step=1)
     projects_data = []
-
+    
     for i in range(bulk_count):
         with st.expander(f"项目 {i+1} 配置", expanded=(i==0)):
-            p_name = st.text_input(f"项目名称 / Product ID", value=f"PROJ_{int(time.time())}_{i+1}", key=f"bulk_name_{i}")
+            p_name = st.text_input(f"项目名称 / Product ID", value=f"PROJ_{uuid.uuid4().hex[:8].upper()}", key=f"bulk_name_{i}")
             
             # Shared Tag Selectors
             eth, age, bg = render_tag_selectors(f"bulk_{i}")
-
             use_def = st.checkbox("使用智能系统提示词 (推荐)", value=True, key=f"bulk_use_def_{i}")
-            selected_template = st.selectbox(f"选择提示词模板 (项目 {i+1})", prompt_options, key=f"bulk_p_sel_{i}")
+            
+            selected_display = st.selectbox(f"选择提示词模板 (项目 {i+1})", prompt_options_display, key=f"bulk_p_sel_{i}")
             template_content = ""
-            if selected_template != "从空白开始 (Blank)":
+            if selected_display != "从空白开始 (Blank)":
                 try:
-                    with open(os.path.join(PROMPTS_DIR, selected_template), "r", encoding="utf-8") as f:
+                    with open(os.path.join(PROMPTS_DIR, selected_display + ".txt"), "r", encoding="utf-8") as f:
                         template_content = f.read()
                 except:
                     pass
-            u_prompt = st.text_area("详细提示词描述", value=template_content, key=f"bulk_prompt_{i}", height=100)
-
+            
+            u_prompt = st.text_area("詳細提示词描述", value=template_content, key=f"bulk_prompt_{i}", height=100)
+            
             save_prompt = False
             save_name = ""
-            if selected_template == "从空白开始 (Blank)":
-                save_prompt = st.checkbox("记录此新提示词 (Save as template)", value=False, key=f"bulk_save_check_{i}")
+            if selected_display == "从空白开始 (Blank)":
+                save_prompt = st.checkbox("記錄此新提示词 (Save as template)", value=False, key=f"bulk_save_check_{i}")
                 if save_prompt:
                     save_name = st.text_input("提示词模板名称", value=f"Template_{int(time.time())}", key=f"bulk_save_name_{i}")
-
+            
             t_type = st.selectbox("选择任务类型", ["从文本生成图像", "从图像和文本生成图像"], key=f"bulk_task_{i}", index=1)
             up_files = None
             if t_type == "从图像和文本生成图像":
@@ -74,7 +76,7 @@ def render_new_project(LOGS_DIR, PROMPTS_DIR, test_mode):
                     for idx, up_file in enumerate(up_files[:5]):
                         with preview_cols[idx]:
                             st.image(up_file, width=150)
-
+            
             projects_data.append({
                 "name": p_name,
                 "eth": eth,
@@ -87,24 +89,30 @@ def render_new_project(LOGS_DIR, PROMPTS_DIR, test_mode):
                 "save_prompt": save_prompt,
                 "save_name": save_name
             })
-
+            
     if st.button("批量运行 AI", type="primary", use_container_width=True):
         for idx, data in enumerate(projects_data):
+            # Validation for image mode
+            if data['task_type'] == "从图像和文本生成图像" and not data['files']:
+                st.error(f"项目 {idx+1} ({data['name']}): 请上传至少一张商品图片。")
+                continue
+                
             st.write(f"### 正在处理项目 {idx+1}: {data['name']}...")
+            
             if data['save_prompt'] and data['save_name'] and data['prompt']:
                 s_name = data['save_name'] if data['save_name'].endswith(".txt") else data['save_name'] + ".txt"
                 with open(os.path.join(PROMPTS_DIR, s_name), "w", encoding="utf-8") as f:
                     f.write(data['prompt'])
                 st.info(f"已保存新提示词模板: {s_name}")
-
+            
             final_p = assemble_prompt(data['prompt'], data['use_def'], data['eth'], data['age'], data['bg'])
             log_dir = os.path.join(LOGS_DIR, data['name'])
             os.makedirs(os.path.join(log_dir, "inputs"), exist_ok=True)
             os.makedirs(os.path.join(log_dir, "outputs"), exist_ok=True)
-
+            
             with open(os.path.join(log_dir, "prompt.txt"), "w", encoding="utf-8") as f:
                 f.write(final_p)
-
+                
             metadata = {
                 "id": data['name'],
                 "timestamp": time.time(),
@@ -118,31 +126,28 @@ def render_new_project(LOGS_DIR, PROMPTS_DIR, test_mode):
             }
             with open(os.path.join(log_dir, "metadata.json"), "w", encoding="utf-8") as f:
                 json.dump(metadata, f, ensure_ascii=False, indent=4)
-
+            
             processed_imgs = []
             if data['task_type'] == "从图像和文本生成图像":
-                if data['files']:
-                    for f_idx, up_file in enumerate(data['files'][:5]):
-                        img = Image.open(up_file)
-                        img.thumbnail((512, 512))
-                        img.save(os.path.join(log_dir, "inputs", f"input_image_{f_idx+1}.png"))
-                        processed_imgs.append(img)
-                else:
-                    continue
-
+                for f_idx, up_file in enumerate(data['files'][:5]):
+                    img = Image.open(up_file)
+                    img.thumbnail((512, 512))
+                    img.save(os.path.join(log_dir, "inputs", f"input_image_{f_idx+1}.png"))
+                    processed_imgs.append(img)
+            
             with st.spinner(f"AI 正在为 {data['name']} 生成结果..."):
                 if data['task_type'] == "从文本生成图像":
                     image_results = generate_image_from_text(final_p, test_mode)
                 else:
                     image_results = generate_image_from_image_and_text(processed_imgs, final_p, test_mode)
-
+                
                 if image_results:
                     for i, img_data in enumerate(image_results):
                         img_path = img_data if test_mode else os.path.join(log_dir, "outputs", f"generated_image_{i+1}.png")
                         if not test_mode:
                             with open(img_path, "wb") as f:
                                 f.write(img_data)
-
+        
         st.success("批量处理完成！")
         st.balloons()
         st.session_state["navigate_to"] = "历史记录"
@@ -151,9 +156,11 @@ def render_new_project(LOGS_DIR, PROMPTS_DIR, test_mode):
 def assemble_prompt(base_text, use_default, ethnicity, age, bg):
     if not use_default and base_text.strip():
         return base_text
+    
     eth_map = {"西方人 (Western)": "western girl", "亚洲人 (Asian)": "asian girl", "非洲人 (African)": "african girl", "拉丁裔 (Hispanic)": "hispanic girl"}
     age_map = {"20多岁 (20s)": "in her mid 20s", "30多岁 (30s)": "in her 30s", "40多岁 (40s)": "in her 40s"}
-    bg_map = {"灰色影棚 (Grey Studio)": "in a grey studio background", "户外街道 (Street)": "in a sunny street background", "公园 (Park)": "in a green park background", "室内客厅 (Living Room)": "in a cozy living room background"}
+    bg_map = {"灰色影棚 (Grey Studio)": "in a grey studio background", "户外街道 (Street)": "in a sunny street background", "公園 (Park)": "in a green park background", "室内客厅 (Living Room)": "in a cozy living room background"}
+    
     system_base = f"A {eth_map[ethnicity]} {age_map[age]} wearing the garment, taking the photo {bg_map[bg]}."
     return f"{system_base} {base_text}" if base_text.strip() else system_base
 
@@ -161,106 +168,127 @@ def render_prompt_management(PROMPTS_DIR):
     st.header("提示词管理")
     if not os.path.exists(PROMPTS_DIR):
         os.makedirs(PROMPTS_DIR, exist_ok=True)
-
-    prompt_files = [f for f in os.listdir(PROMPTS_DIR) if f.endswith(".txt")]
-    selected_prompt = st.selectbox("选择提示", ["创建新提示"] + prompt_files)
-
+    
+    prompt_files = sorted([f for f in os.listdir(PROMPTS_DIR) if f.endswith(".txt")])
+    display_names = [os.path.splitext(f)[0] for f in prompt_files]
+    
+    selected_display = st.selectbox("选择提示", ["创建新提示"] + display_names)
+    selected_prompt_file = (selected_display + ".txt") if selected_display != "创建新提示" else None
+    
     prompt_content = ""
     saved_tags = {}
-    if selected_prompt != "创建新提示":
+    
+    if selected_prompt_file:
         try:
-            with open(os.path.join(PROMPTS_DIR, selected_prompt), "r", encoding="utf-8") as f:
+            with open(os.path.join(PROMPTS_DIR, selected_prompt_file), "r", encoding="utf-8") as f:
                 prompt_content = f.read()
         except:
             pass
-        tag_file = os.path.join(PROMPTS_DIR, selected_prompt.replace(".txt", "_tags.json"))
+        
+        tag_file = os.path.join(PROMPTS_DIR, selected_prompt_file.replace(".txt", "_tags.json"))
         if os.path.exists(tag_file):
             try:
                 with open(tag_file, "r", encoding="utf-8") as f:
                     saved_tags = json.load(f)
             except:
                 pass
-
+                
     st.markdown("### 🏷️ 标签设置")
     tag_eth, tag_age, tag_bg = render_tag_selectors("pm", saved_tags)
-
+    
     st.markdown("### 📝 提示词内容")
-    new_prompt_name = st.text_input("提示名称", value=os.path.splitext(selected_prompt)[0] if selected_prompt != "创建新提示" else "")
+    new_prompt_name = st.text_input("提示名称", value=selected_display if selected_display != "创建新提示" else "")
     prompt_text = st.text_area("提示内容", value=prompt_content, height=300)
-
+    
     col1, col2 = st.columns(2)
     with col1:
         if st.button("保存提示", use_container_width=True):
             if new_prompt_name and prompt_text:
-                if not new_prompt_name.endswith(".txt"):
-                    new_prompt_name += ".txt"
-                with open(os.path.join(PROMPTS_DIR, new_prompt_name), "w", encoding="utf-8") as f:
+                file_name = new_prompt_name if new_prompt_name.endswith(".txt") else new_prompt_name + ".txt"
+                with open(os.path.join(PROMPTS_DIR, file_name), "w", encoding="utf-8") as f:
                     f.write(prompt_text)
+                
                 tags_data = {"ethnicity": tag_eth, "age": tag_age, "background": tag_bg}
-                tag_file = os.path.join(PROMPTS_DIR, new_prompt_name.replace(".txt", "_tags.json"))
-                with open(tag_file, "w", encoding="utf-8") as f:
+                tag_file_name = file_name.replace(".txt", "_tags.json")
+                with open(os.path.join(PROMPTS_DIR, tag_file_name), "w", encoding="utf-8") as f:
                     json.dump(tags_data, f, ensure_ascii=False, indent=4)
+                
                 st.success(f"提示 '{new_prompt_name}' 保存成功！")
                 st.rerun()
+                
     with col2:
-        if selected_prompt != "创建新提示" and st.button("删除提示", type="primary", use_container_width=True):
-            os.remove(os.path.join(PROMPTS_DIR, selected_prompt))
-            tag_file = os.path.join(PROMPTS_DIR, selected_prompt.replace(".txt", "_tags.json"))
-            if os.path.exists(tag_file):
-                os.remove(tag_file)
-            st.success("已删除。")
-            st.rerun()
+        if selected_prompt_file:
+            if st.button("删除提示", type="primary", use_container_width=True, key="del_prompt_btn"):
+                st.session_state["confirm_delete_prompt"] = selected_prompt_file
+    
+    if "confirm_delete_prompt" in st.session_state and st.session_state["confirm_delete_prompt"] == selected_prompt_file:
+        st.warning(f"确定要删除 '{selected_display}' 吗？")
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("确认删除", type="primary", use_container_width=True):
+                os.remove(os.path.join(PROMPTS_DIR, selected_prompt_file))
+                tag_f = os.path.join(PROMPTS_DIR, selected_prompt_file.replace(".txt", "_tags.json"))
+                if os.path.exists(tag_f):
+                    os.remove(tag_f)
+                del st.session_state["confirm_delete_prompt"]
+                st.rerun()
+        with c2:
+            if st.button("取消", use_container_width=True):
+                del st.session_state["confirm_delete_prompt"]
+                st.rerun()
 
 def render_history(LOGS_DIR):
     st.header("Picture Generation Tracker")
-    log_root = LOGS_DIR
-    if not os.path.exists(log_root): return
-    projects = [d for d in os.listdir(log_root) if os.path.isdir(os.path.join(log_root, d))]
+    if not os.path.exists(LOGS_DIR): return
+    
+    projects = [d for d in os.listdir(LOGS_DIR) if os.path.isdir(os.path.join(LOGS_DIR, d))]
     if not projects:
         st.info("暂无生成历史。")
         return
-
+    
     tracker_data = []
     for p in projects:
-        p_path = os.path.join(log_root, p)
+        p_path = os.path.join(LOGS_DIR, p)
         mtime = os.path.getmtime(p_path)
         prompt = ""
         if os.path.exists(os.path.join(p_path, "prompt.txt")):
             with open(os.path.join(p_path, "prompt.txt"), "r", encoding="utf-8") as f:
                 prompt = f.read()
+        
         metadata = {}
         if os.path.exists(os.path.join(p_path, "metadata.json")):
             with open(os.path.join(p_path, "metadata.json"), "r", encoding="utf-8") as f:
                 metadata = json.load(f)
+        
         preview = None
         out_dir = os.path.join(p_path, "outputs")
         if os.path.exists(out_dir):
             out_files = [f for f in os.listdir(out_dir) if f.lower().endswith((".png", ".jpg", ".jpeg"))]
             if out_files:
                 preview = os.path.join(out_dir, sorted(out_files)[0])
+        
         tracker_data.append({"id": p, "prompt": prompt, "mtime": mtime, "preview": preview, "metadata": metadata})
-
+    
     tracker_data.sort(key=lambda x: x["mtime"], reverse=True)
     
-    with st.container():
-        f_col1, f_col2, f_col3, f_col4, f_col5 = st.columns([2, 1, 1, 1, 0.5])
-        with f_col1:
-            search_query = st.text_input("🔍 搜索 (Product ID / Prompt)", "").lower()
-        
-        ethnicities = sorted(list(set([d["metadata"].get("ethnicity", "N/A") for d in tracker_data if d.get("metadata")])))
-        ages = sorted(list(set([d["metadata"].get("age", "N/A") for d in tracker_data if d.get("metadata")])))
-        backgrounds = sorted(list(set([d["metadata"].get("background", "N/A") for d in tracker_data if d.get("metadata")])))
-        
-        with f_col2:
-            f_eth = st.selectbox("族裔", ["全部"] + ethnicities)
-        with f_col3:
-            f_age = st.selectbox("年龄", ["全部"] + ages)
-        with f_col4:
-            f_bg = st.selectbox("背景", ["全部"] + backgrounds)
-        with f_col5:
-            st.write("")
-            if st.button("🔄", help="重置筛选"): st.rerun()
-
+    f_col1, f_col2, f_col3, f_col4, f_col5 = st.columns([2, 1, 1, 1, 0.5])
+    with f_col1:
+        search_query = st.text_input("🔍 搜索 (Product ID / Prompt)", "").lower()
+    
+    ethnicities = sorted(list(set([d["metadata"].get("ethnicity", "N/A") for d in tracker_data if d.get("metadata")])))
+    ages = sorted(list(set([d["metadata"].get("age", "N/A") for d in tracker_data if d.get("metadata")])))
+    backgrounds = sorted(list(set([d["metadata"].get("background", "N/A") for d in tracker_data if d.get("metadata")])))
+    
+    with f_col2:
+        f_eth = st.selectbox("族裔", ["全部"] + ethnicities)
+    with f_col3:
+        f_age = st.selectbox("年龄", ["全部"] + ages)
+    with f_col4:
+        f_bg = st.selectbox("背景", ["全部"] + backgrounds)
+    with f_col5:
+        st.write("")
+        if st.button("🔄", help="重置筛选"): st.rerun()
+    
     filtered_data = []
     for d in tracker_data:
         m = d.get("metadata", {})
@@ -270,20 +298,20 @@ def render_history(LOGS_DIR):
         match_bg = (f_bg == "全部") or (m.get("background") == f_bg)
         if match_search and match_eth and match_age and match_bg:
             filtered_data.append(d)
-
+    
     st.markdown("---")
     if not filtered_data:
         st.warning("没有找到匹配的项目。")
         return
-
-    h_col1, h_col2, h_col3 = st.columns([1, 4, 1])
+    
+    h_col1, h_col2, h_col3 = st.columns([1, 3, 1.5]) # Improved Ratio
     h_col1.markdown("**预览**")
     h_col2.markdown("**项目详情 (Card View)**")
     h_col3.markdown("**操作**")
-
+    
     for item in filtered_data:
         with st.container():
-            c1, c2, c3 = st.columns([1, 4, 1])
+            c1, c2, c3 = st.columns([1, 3, 1.5])
             with c1:
                 if item["preview"]: st.image(item["preview"], use_container_width=True)
                 else: st.caption("No Output")
@@ -301,7 +329,7 @@ def render_history(LOGS_DIR):
                 st.caption(item["prompt"][:200] + "..." if len(item["prompt"]) > 200 else item["prompt"])
                 st.caption(f"📅 {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(item['mtime']))}")
             with c3:
-                with st.expander("查看详情"):
+                with st.expander("查看详情", expanded=False):
                     st.write(f"**完整提示词:**")
                     st.code(item["prompt"])
                     sub_col1, sub_col2 = st.columns(2)
@@ -313,26 +341,28 @@ def render_history(LOGS_DIR):
                             st.rerun()
                     with sub_col2:
                         if st.button("删除项目", key=f"del_{item['id']}", type="primary", use_container_width=True):
-                            shutil.rmtree(os.path.join(log_root, item["id"]))
-                            st.rerun()
-
-                    p_path = os.path.join(log_root, item["id"])
-                    input_dir = os.path.join(p_path, "inputs")
-                    output_dir = os.path.join(p_path, "outputs")
-                    if os.path.exists(input_dir):
-                        in_files = sorted([f for f in os.listdir(input_dir) if f.lower().endswith((".png", ".jpg", ".jpeg"))])
-                        if in_files:
-                            st.markdown("**输入图片:**")
-                            in_cols = st.columns(3)
-                            for idx, f_name in enumerate(in_files):
-                                in_cols[idx % 3].image(os.path.join(input_dir, f_name), use_container_width=True)
-                    if os.path.exists(output_dir):
-                        out_files = sorted([f for f in os.listdir(output_dir) if f.lower().endswith((".png", ".jpg", ".jpeg"))])
-                        if out_files:
-                            st.markdown("**生成结果:**")
-                            out_cols = st.columns(2)
-                            for idx, of in enumerate(out_files):
-                                out_cols[idx % 2].image(os.path.join(output_dir, of), use_container_width=True)
-                                with open(os.path.join(output_dir, of), "rb") as f:
-                                    st.download_button("下载", f, file_name=of, key=f"dl_{item['id']}_{idx}", use_container_width=True)
-        st.markdown("---")
+                            st.session_state[f"confirm_del_{item['id']}"] = True
+                    
+                    if st.session_state.get(f"confirm_del_{item['id']}"):
+                        st.error("确定要删除此项目吗？")
+                        d_col1, d_col2 = st.columns(2)
+                        with d_col1:
+                            if st.button("确认", key=f"conf_del_{item['id']}", type="primary", use_container_width=True):
+                                shutil.rmtree(os.path.join(LOGS_DIR, item["id"]))
+                                del st.session_state[f"confirm_del_{item['id']}"]
+                                st.rerun()
+                        with d_col2:
+                            if st.button("取消", key=f"canc_del_{item['id']}", use_container_width=True):
+                                del st.session_state[f"confirm_del_{item['id']}"]
+                                st.rerun()
+                                
+                p_path = os.path.join(LOGS_DIR, item["id"])
+                input_dir = os.path.join(p_path, "inputs")
+                if os.path.exists(input_dir):
+                    in_files = sorted([f for f in os.listdir(input_dir) if f.lower().endswith((".png", ".jpg", ".jpeg"))])
+                    if in_files:
+                        st.markdown("**输入图片:**")
+                        in_cols = st.columns(4)
+                        for idx, f_name in enumerate(in_files[:4]):
+                            in_cols[idx].image(os.path.join(input_dir, f_name), use_container_width=True)
+            st.markdown("---")
