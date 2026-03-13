@@ -61,7 +61,7 @@ if page == "新项目":
     render_new_project(LOGS_DIR, MODEL_PROMPTS_DIR, SCENE_PROMPTS_DIR, test_mode)
 elif page == "提示词库":
     render_prompt_gallery(MODEL_PROMPTS_DIR, SCENE_PROMPTS_DIR)
-    elif page == "提示词构建器":
+elif page == "提示词构建器":
     render_prompt_builder(MODEL_PROMPTS_DIR, SCENE_PROMPTS_DIR)
 elif page == "模特提示词管理":
     render_prompt_management(MODEL_PROMPTS_DIR, "模特")
