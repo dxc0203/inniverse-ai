@@ -36,6 +36,7 @@ with st.sidebar:
             "模特提示词管理",
             "场景提示词管理",
             "历史记录",
+            
         ],
         key="page_nav",
     )
