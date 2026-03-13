@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 
 # Import local modules
 from constants import LOGS_DIR, MODEL_PROMPTS_DIR, SCENE_PROMPTS_DIR, LANG
-from pages_ui import render_new_project, render_prompt_management, render_history, render_prompt_gallery
+from pages_ui import render_new_project, render_prompt_management, render_history, render_prompt_gallery, render_prompt_builder
 
 load_dotenv()
 
@@ -33,6 +33,7 @@ with st.sidebar:
         [
             "新项目",
             "提示词库",
+                        "提示词构建器",
             "模特提示词管理",
             "场景提示词管理",
             "历史记录",
@@ -60,6 +61,8 @@ if page == "新项目":
     render_new_project(LOGS_DIR, MODEL_PROMPTS_DIR, SCENE_PROMPTS_DIR, test_mode)
 elif page == "提示词库":
     render_prompt_gallery(MODEL_PROMPTS_DIR, SCENE_PROMPTS_DIR)
+    elif page == "提示词构建器":
+    render_prompt_builder(MODEL_PROMPTS_DIR, SCENE_PROMPTS_DIR)
 elif page == "模特提示词管理":
     render_prompt_management(MODEL_PROMPTS_DIR, "模特")
 elif page == "场景提示词管理":
