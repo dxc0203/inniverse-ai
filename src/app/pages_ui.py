@@ -273,3 +273,13 @@ def render_history(LOGS_DIR):
                 st.download_button("下载 ZIP", buf.getvalue(), f"{p}.zip", "application/zip")
             if c3.button("🗑️", key=f"del_{p}", type="primary"):
                 shutil.rmtree(p_path); st.rerun()
+
+def render_prompt_builder(MODEL_DIR, SCENE_DIR):
+    st.header("🛠️ 提示词构建器")
+    st.info("🚧 此功能正在开发中...")
+    st.markdown("""
+    ### 即将推出：
+    - 使用标签占位符创建提示词模板（如 `{ethnicity} {age} woman`）
+    - 在提示词库中显示可用标签
+    - 在新项目页面中合并模板和标签值
+    """)
