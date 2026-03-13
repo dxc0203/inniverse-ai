@@ -3,10 +3,11 @@ import os
 from dotenv import load_dotenv
 
 # Import local modules
-from constants import LOGS_DIR, PROMPTS_DIR, LANG
+from constants import LOGS_DIR, MODEL_PROMPTS_DIR, SCENE_PROMPTS_DIR, LANG
 from pages_ui import render_new_project, render_prompt_management, render_history, render_prompt_gallery
 
 load_dotenv()
+
 st.set_page_config(page_title="Inniverse AI 实验室", layout="wide")
 
 # --- Session State ---
@@ -32,7 +33,8 @@ with st.sidebar:
         [
             "新项目",
             "提示词库",
-            "提示词管理",
+            "模特提示词管理",
+            "场景提示词管理",
             "历史记录",
         ],
         key="page_nav",
@@ -54,10 +56,12 @@ with st.sidebar:
 
 # --- Main Interface ---
 if page == "新项目":
-    render_new_project(LOGS_DIR, PROMPTS_DIR, test_mode)
+    render_new_project(LOGS_DIR, MODEL_PROMPTS_DIR, SCENE_PROMPTS_DIR, test_mode)
 elif page == "提示词库":
-    render_prompt_gallery(PROMPTS_DIR)
-elif page == "提示词管理":
-    render_prompt_management(PROMPTS_DIR)
+    render_prompt_gallery(MODEL_PROMPTS_DIR, SCENE_PROMPTS_DIR)
+elif page == "模特提示词管理":
+    render_prompt_management(MODEL_PROMPTS_DIR, "模特")
+elif page == "场景提示词管理":
+    render_prompt_management(SCENE_PROMPTS_DIR, "场景")
 elif page == "历史记录":
     render_history(LOGS_DIR)
